@@ -63,7 +63,7 @@ def get_descriptors(model, dataloader, device):
         with torch.autocast(device_type='cuda', dtype=torch.float16):
             for batch in tqdm(dataloader, 'Calculating descritptors...'):
                 imgs, labels = batch
-                output = model(imgs.to(device)).cpu()
+                _, output = model(imgs.to(device)).cpu()
                 descriptors.append(output)
 
     return torch.cat(descriptors)

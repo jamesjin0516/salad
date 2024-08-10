@@ -6,10 +6,11 @@ from .vpr_model import VPRModel
 
 class DINOV2SaladFeatureExtractor:
 
-    def __init__(self, root, content):
+    def __init__(self, root, content, pipeline=False):
         self.max_image_size = content["max_image_size"]
         self.device = "cuda" if content["cuda"] else "cpu"
-        self.model = self.load_model(os.path.join(root, content["ckpt_path"]))
+        self.model = self.load_model(os.path.join(root, os.path.join(content["ckpt_path"],
+                                    "model_best.pth") if pipeline else content["ckpt_path"]))
     
     def __call__(self, images):
         with torch.no_grad():
@@ -17,8 +18,8 @@ class DINOV2SaladFeatureExtractor:
             b, c, h, w = scaled_imgs.shape
             h_new, w_new = (h // 14) * 14, (w // 14) * 14
             scaled_imgs = transforms.CenterCrop((h_new, w_new))(scaled_imgs)
-            output = self.model(scaled_imgs).to(self.device)
-            return output.cpu().numpy()
+            encodings, descriptors = self.model(scaled_imgs)
+            return encodings[0].detach().cpu(), descriptors.detach().cpu()
         
     def load_model(self, ckpt_path):
         model = VPRModel(

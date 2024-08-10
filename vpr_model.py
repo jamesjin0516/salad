@@ -82,9 +82,9 @@ class VPRModel(pl.LightningModule):
         
     # the forward pass of the lightning model
     def forward(self, x):
-        x = self.backbone(x)
-        x = self.aggregator(x)
-        return x
+        encodings = self.backbone(x)
+        descriptors = self.aggregator(encodings)
+        return encodings, descriptors
     
     # configure the optimizer 
     def configure_optimizers(self):
@@ -175,7 +175,7 @@ class VPRModel(pl.LightningModule):
         labels = labels.view(-1)
 
         # Feed forward the batch to the model
-        descriptors = self(images) # Here we are calling the method forward that we defined above
+        _, descriptors = self(images) # Here we are calling the method forward that we defined above
 
         if torch.isnan(descriptors).any():
             raise ValueError('NaNs in descriptors')
@@ -193,7 +193,7 @@ class VPRModel(pl.LightningModule):
     # this is the way Pytorch Lghtning is made. All about modularity, folks.
     def validation_step(self, batch, batch_idx, dataloader_idx=None):
         places, _ = batch
-        descriptors = self(places)
+        _, descriptors = self(places)
         self.val_outputs[dataloader_idx].append(descriptors.detach().cpu())
         return descriptors.detach().cpu()
     
