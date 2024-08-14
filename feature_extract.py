@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import os
 import torch
 from torchvision import transforms
@@ -9,17 +10,16 @@ class DINOV2SaladFeatureExtractor:
     def __init__(self, root, content, pipeline=False):
         self.max_image_size = content["max_image_size"]
         self.device = "cuda" if content["cuda"] else "cpu"
-        self.model = self.load_model(os.path.join(root, os.path.join(content["ckpt_path"],
+        self.saved_state, self.model = self.load_model(os.path.join(root, os.path.join(content["ckpt_path"],
                                     "model_best.pth") if pipeline else content["ckpt_path"]))
     
     def __call__(self, images):
-        with torch.no_grad():
-            scaled_imgs = self.downscale(images)
-            b, c, h, w = scaled_imgs.shape
-            h_new, w_new = (h // 14) * 14, (w // 14) * 14
-            scaled_imgs = transforms.CenterCrop((h_new, w_new))(scaled_imgs)
-            encodings, descriptors = self.model(scaled_imgs)
-            return encodings[0].detach().cpu(), descriptors.detach().cpu()
+        scaled_imgs = self.downscale(images)
+        b, c, h, w = scaled_imgs.shape
+        h_new, w_new = (h // 14) * 14, (w // 14) * 14
+        scaled_imgs = transforms.CenterCrop((h_new, w_new))(scaled_imgs)
+        encodings, descriptors = self.model(scaled_imgs)
+        return encodings[0], descriptors
         
     def load_model(self, ckpt_path):
         model = VPRModel(
@@ -38,10 +38,13 @@ class DINOV2SaladFeatureExtractor:
             },
         )
 
-        model.load_state_dict(torch.load(ckpt_path))
+        saved_state = torch.load(ckpt_path)
+        if saved_state.keys() != {"epoch", "best_score", "state_dict"}:
+            saved_state = {"epoch": 0, "best_score": 0, "state_dict": saved_state}
+        model.load_state_dict(saved_state["state_dict"])
         model = model.eval().to(self.device)
-        print(f"Loaded model from {ckpt_path} Successfully!")
-        return model
+        print(f"Loaded model from {ckpt_path} successfully!")
+        return saved_state, model
 
     def downscale(self, images):
         if max(images.shape[-2:]) > self.max_image_size:
@@ -55,6 +58,27 @@ class DINOV2SaladFeatureExtractor:
                 w = self.max_image_size
             return transforms.functional.resize(images, (h, w), interpolation=transforms.functional.InterpolationMode.BICUBIC)
         return images
+    
+    def set_train(self, is_train):
+        self.model.train(is_train)
+    
+    def torch_compile(self, float32, **compile_args):
+        self.model = torch.compile(self.model, **compile_args)
+        if float32:
+            self.model.to(torch.float32)
+    
+    def save_state(self, save_path, new_state):
+        new_state["state_dict"] = self.model.state_dict()
+        torch.save(new_state, save_path)
+    
+    @property
+    def last_epoch(self): return self.saved_state["epoch"]
+
+    @property
+    def best_score(self): return self.saved_state["best_score"]
+
+    @property
+    def parameters(self): return self.model.parameters()
     
     @property
     def feature_length(self):
