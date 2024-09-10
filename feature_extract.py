@@ -38,7 +38,7 @@ class DINOV2SaladFeatureExtractor:
             },
         )
 
-        saved_state = torch.load(ckpt_path)
+        saved_state = torch.load(ckpt_path, map_location=self.device)
         if saved_state.keys() != {"epoch", "best_score", "state_dict"}:
             saved_state = {"epoch": 0, "best_score": 0, "state_dict": saved_state}
         model.load_state_dict(saved_state["state_dict"])
@@ -62,10 +62,11 @@ class DINOV2SaladFeatureExtractor:
     def set_train(self, is_train):
         self.model.train(is_train)
     
-    def torch_compile(self, float32, **compile_args):
+    def torch_compile(self, **compile_args):
         self.model = torch.compile(self.model, **compile_args)
-        if float32:
-            self.model.to(torch.float32)
+    
+    def set_float32(self):
+        self.model.to(torch.float32)
     
     def save_state(self, save_path, new_state):
         new_state["state_dict"] = self.model.state_dict()
