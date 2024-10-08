@@ -41,6 +41,13 @@ class DINOV2SaladFeatureExtractor:
         saved_state = torch.load(ckpt_path, map_location=self.device)
         if saved_state.keys() != {"epoch", "best_score", "state_dict"}:
             saved_state = {"epoch": 0, "best_score": 0, "state_dict": saved_state}
+        # Remove module prefix from state dict
+        state_dict_keys = list(saved_state["state_dict"].keys())
+        for state_key in state_dict_keys:
+            if state_key.startswith("module"):
+                new_key = state_key.removeprefix("module.")
+                saved_state["state_dict"][new_key] = saved_state["state_dict"][state_key]
+                del saved_state["state_dict"][state_key]
         model.load_state_dict(saved_state["state_dict"])
         model = model.eval().to(self.device)
         print(f"Loaded model from {ckpt_path} successfully!")
@@ -64,6 +71,9 @@ class DINOV2SaladFeatureExtractor:
     
     def torch_compile(self, **compile_args):
         self.model = torch.compile(self.model, **compile_args)
+    
+    def set_parallel(self):
+        self.model = torch.nn.DataParallel(self.model)
     
     def set_float32(self):
         self.model.to(torch.float32)
