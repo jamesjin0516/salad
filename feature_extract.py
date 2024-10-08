@@ -1,25 +1,50 @@
-from collections import OrderedDict
+import cv2
+import numpy as np
 import os
 import torch
 from torchvision import transforms
+from torchvision.transforms import functional
 from .vpr_model import VPRModel
+
+
+# Code from https://github.com/jacobgil/vit-explain/
+def show_mask_on_image(img, mask):
+    img = np.float32(img) / 255
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    cam = 0.7 * heatmap + np.float32(img)
+    cam = cam / np.max(cam)
+    return np.uint8(255 * cam)
 
 
 class DINOV2SaladFeatureExtractor:
 
-    def __init__(self, root, content, pipeline=False):
+    def __init__(self, root, content, pipeline=False, with_heatmap=True):
         self.max_image_size = content["max_image_size"]
         self.device = "cuda" if content["cuda"] else "cpu"
         self.saved_state, self.model = self.load_model(os.path.join(root, os.path.join(content["ckpt_path"],
                                     "model_best.pth") if pipeline else content["ckpt_path"]))
+        self.with_heatmap = with_heatmap
     
     def __call__(self, images):
-        scaled_imgs = self.downscale(images)
-        b, c, h, w = scaled_imgs.shape
-        h_new, w_new = (h // 14) * 14, (w // 14) * 14
-        scaled_imgs = transforms.CenterCrop((h_new, w_new))(scaled_imgs)
-        encodings, descriptors = self.model(scaled_imgs)
+        resized_images = self.prepare_for_vit(images)
+        encodings, descriptors, _, _ = self.model(resized_images)
         return encodings[0], descriptors
+    
+    def generate_heatmap(self, image, input_tensor):
+        resized = self.prepare_for_vit(input_tensor).to(self.device)
+        encodings, _, clst_feats, score_matrix = self.model(resized)
+        h, w = encodings[0].shape[-2:]
+        B, C = clst_feats.shape[:2]
+        features_flat = clst_feats.view(B, C, -1)
+        for c_i in range(C):
+            features_flat[:, c_i, :] = torch.sum(features_flat[:, c_i, :] * score_matrix, dim=1)
+        activations = torch.norm(features_flat, dim=1).reshape(h, w).cpu().numpy()
+        activation_base = functional.to_pil_image(self.prepare_for_vit(functional.pil_to_tensor(image).unsqueeze(0)).squeeze())
+        np_img = np.array(activation_base)[:, :, ::-1]
+        mask = cv2.resize(1 - activations / np.max(activations), (np_img.shape[1], np_img.shape[0]))
+        activations_map = show_mask_on_image(np_img, mask)
+        return activations_map
         
     def load_model(self, ckpt_path):
         model = VPRModel(
@@ -53,6 +78,12 @@ class DINOV2SaladFeatureExtractor:
         print(f"Loaded model from {ckpt_path} successfully!")
         return saved_state, model
 
+    def prepare_for_vit(self, images):
+        images = self.downscale(images)
+        b, c, h, w = images.shape
+        h_new, w_new = (h // 14) * 14, (w // 14) * 14
+        return transforms.CenterCrop((h_new, w_new))(images)
+    
     def downscale(self, images):
         if max(images.shape[-2:]) > self.max_image_size:
             b, c, h, w = images.shape

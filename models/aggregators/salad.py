@@ -102,18 +102,18 @@ class SALAD(nn.Module):
         t = self.token_features(t)
 
         # Sinkhorn algorithm
-        p = log_optimal_transport(p, self.dust_bin, 3)
-        p = torch.exp(p)
+        p_opti = log_optimal_transport(p, self.dust_bin, 3)
+        p_opti = torch.exp(p_opti)
         # Normalize to maintain mass
-        p = p[:, :-1, :]
+        p_opti = p_opti[:, :-1, :]
 
 
-        p = p.unsqueeze(1).repeat(1, self.cluster_dim, 1, 1)
-        f = f.unsqueeze(2).repeat(1, 1, self.num_clusters, 1)
+        p_all_clsts = p_opti.unsqueeze(1).repeat(1, self.cluster_dim, 1, 1)
+        f_all_clsts = f.unsqueeze(2).repeat(1, 1, self.num_clusters, 1)
 
-        f = torch.cat([
+        f_all_clsts = torch.cat([
             nn.functional.normalize(t, p=2, dim=-1),
-            nn.functional.normalize((f * p).sum(dim=-1), p=2, dim=1).flatten(1)
+            nn.functional.normalize((f_all_clsts * p_all_clsts).sum(dim=-1), p=2, dim=1).flatten(1)
         ], dim=-1)
 
-        return nn.functional.normalize(f, p=2, dim=-1)
+        return nn.functional.normalize(f_all_clsts, p=2, dim=-1), f, p
