@@ -109,11 +109,11 @@ class SALAD(nn.Module):
 
 
         p_all_clsts = p_opti.unsqueeze(1).repeat(1, self.cluster_dim, 1, 1)
-        f_all_clsts = f.unsqueeze(2).repeat(1, 1, self.num_clusters, 1)
+        f = f.unsqueeze(2).repeat(1, 1, self.num_clusters, 1)
 
-        f_all_clsts = torch.cat([
+        f = torch.cat([
             nn.functional.normalize(t, p=2, dim=-1),
-            nn.functional.normalize((f_all_clsts * p_all_clsts).sum(dim=-1), p=2, dim=1).flatten(1)
+            nn.functional.normalize((f * p_all_clsts).sum(dim=-1), p=2, dim=1).flatten(1)
         ], dim=-1)
 
-        return nn.functional.normalize(f_all_clsts, p=2, dim=-1), f, p
+        return nn.functional.normalize(f, p=2, dim=-1), p_opti

@@ -83,8 +83,8 @@ class VPRModel(pl.LightningModule):
     # the forward pass of the lightning model
     def forward(self, x):
         encodings = self.backbone(x)
-        descriptors, clst_feats, clst_scores = self.aggregator(encodings)
-        return encodings, descriptors, clst_feats, clst_scores
+        descriptors, clst_scores = self.aggregator(encodings)
+        return encodings, descriptors, clst_scores
     
     # configure the optimizer 
     def configure_optimizers(self):

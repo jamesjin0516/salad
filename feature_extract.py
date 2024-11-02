@@ -28,21 +28,17 @@ class DINOV2SaladFeatureExtractor:
     
     def __call__(self, images):
         resized_images = self.prepare_for_vit(images)
-        encodings, descriptors, _, _ = self.model(resized_images)
+        encodings, descriptors, _ = self.model(resized_images)
         return encodings[0], descriptors
     
     def generate_heatmap(self, image, input_tensor):
         resized = self.prepare_for_vit(input_tensor).to(self.device)
-        encodings, _, clst_feats, score_matrix = self.model(resized)
+        encodings, _, score_matrix = self.model(resized)
         h, w = encodings[0].shape[-2:]
-        B, C = clst_feats.shape[:2]
-        features_flat = clst_feats.view(B, C, -1)
-        for c_i in range(C):
-            features_flat[:, c_i, :] = torch.sum(features_flat[:, c_i, :] * score_matrix, dim=1)
-        activations = torch.norm(features_flat, dim=1).reshape(h, w).cpu().numpy()
+        activations = torch.sum(score_matrix, dim=1).reshape(h, w).cpu().numpy()
         activation_base = functional.to_pil_image(self.prepare_for_vit(functional.pil_to_tensor(image).unsqueeze(0)).squeeze())
         np_img = np.array(activation_base)[:, :, ::-1]
-        mask = cv2.resize(1 - activations / np.max(activations), (np_img.shape[1], np_img.shape[0]))
+        mask = cv2.resize(activations / np.max(activations), (np_img.shape[1], np_img.shape[0]))
         activations_map = show_mask_on_image(np_img, mask)
         return activations_map
         
